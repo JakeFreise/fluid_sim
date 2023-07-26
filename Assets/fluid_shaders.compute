@@ -1,0 +1,338 @@
+// Each #kernel tells which function to compile; you can have many kernels
+
+// struct Cube{
+//     float3 position;
+//     float4 color;
+//     float3 old_velocity;
+//     float3 new_velocity;
+// };
+
+
+
+struct Voxel{
+
+    float3 color;
+    //float3 velocity_buffer;
+    //float3 pressure_buffer;
+    float density_buffer[2];
+    // float3 velocity_b;
+    // float density_b;
+    // float3 velocity_sources_buffer;
+    int obstacle;
+    // int density_source;
+};
+
+RWStructuredBuffer<Voxel> voxels;
+
+//groupshared  Voxel voxels[64];
+
+float3 gravity_force;
+float3 density_source_value;
+float a;
+int N;
+
+
+
+int index_of(int x, int y){
+    return x + y * N;
+}
+
+float calculate_next_surrounding_density(int x, int y, int max){
+
+    float surrounding_density = 0;
+    //edge case, we dont have a density.
+    if(x == 0 || x == max || y == 0 || y == max){
+        return surrounding_density;
+    }
+    float left_d = 0;
+    float right_d = 0;
+    float top_d = 0;
+    float bottom_d = 0;
+
+    int left_obstacle = voxels[(x-1)+y*N].obstacle;
+    int right_obstacle = voxels[(x+1)+y*N].obstacle;
+    int top_obstacle = voxels[x+(y+1)*N].obstacle;
+    int bottom_obstacle = voxels[x+(y-1)*N].obstacle;
+
+    float n_obstacles = left_obstacle + right_obstacle + top_obstacle + bottom_obstacle;
+    float denominator = 4 - n_obstacles;
+    if(left_obstacle == 0)
+        left_d = voxels[(x-1)+y*N].density_buffer[1];
+    if(right_obstacle == 0)
+        right_d = voxels[(x+1)+y*N].density_buffer[1];
+    if(top_obstacle == 0)  
+        top_d = voxels[x+(y+1)*N].density_buffer[1];
+    if(bottom_obstacle == 0)    
+        bottom_d = voxels[x+(y-1)*N].density_buffer[1];
+
+    surrounding_density = (left_d + right_d + top_d + bottom_d)/denominator;
+    return surrounding_density;
+}
+
+void diffuse_density(int index, int x, int y, int max, float a, float b){
+    float current_density = voxels[index].density_buffer[0];
+    float next_surrounding_density = calculate_next_surrounding_density(x, y, max);
+    float next_density = (current_density + a*next_surrounding_density)*b;
+    voxels[index].density_buffer[1] = next_density;
+}
+
+
+#pragma kernel checkerboard_black
+[numthreads(64,1,1)]
+void checkerboard_black (uint3 id : SV_DispatchThreadID)
+{
+    if(id.x < 0 || id.x >= uint (N*N)) { return; }
+    uint y = id.x%N;
+    uint x = floor(id.x/N);
+    uint max = N-1;
+    if((x+y)%2) return;
+
+    float a = .04f;
+    float b = 1/(1+a);
+
+    diffuse_density(id.x, x, y, max, a, b);
+    
+    float current_density = voxels[id.x].density_buffer[0];
+    if(voxels[id.x].obstacle){
+        voxels[id.x].color.r = current_density;
+        voxels[id.x].color.g = current_density;
+        voxels[id.x].color.b = current_density;
+    }
+    else{
+        voxels[id.x].color.r = current_density;
+        voxels[id.x].color.g = current_density;
+        voxels[id.x].color.b = current_density;
+    }
+}
+
+
+#pragma kernel checkerboard_red
+[numthreads(64,1,1)]
+void checkerboard_red (uint3 id : SV_DispatchThreadID)
+{
+    if(id.x < 0 || id.x >= uint (N*N)) { return; }
+    uint x = id.x%N;
+    uint y = floor(id.x/N);
+    uint max = N-1;
+    if((x+y)%2 == 0) return;
+
+    float a = .1f;
+    float b = 1/(1+a);
+
+    diffuse_density(id.x, x, y, max, a, b);
+
+    float current_density = voxels[id.x].density_buffer[0];
+    if(voxels[id.x].obstacle){
+        voxels[id.x].color.r = current_density;
+        voxels[id.x].color.g = current_density;
+        voxels[id.x].color.b = current_density;
+    }
+    else{
+        voxels[id.x].color.r = current_density;
+        voxels[id.x].color.g = current_density;
+        voxels[id.x].color.b = current_density;
+    }
+}
+
+#pragma kernel swap_density
+[numthreads(16,1,1)]
+void swap_density (uint3 id : SV_DispatchThreadID)
+{
+    float tmp = voxels[id.x].density_buffer[0];
+    voxels[id.x].density_buffer[0] = voxels[id.x].density_buffer[1];
+    voxels[id.x].density_buffer[1] = voxels[id.x].density_buffer[0];
+}
+// #pragma kernel density_diffusion
+// [numthreads(10,1,1)]
+// void density_diffusion (uint3 id : SV_DispatchThreadID)
+// {
+//     Voxel voxel = voxels[id.x];
+
+//     Voxel left = voxels[index_of(id.x - 1 , id.y)];
+//     Voxel right = voxels[index_of(id.x + 1 , id.y)];
+//     Voxel bottom = voxels[index_of(id.x, id.y - 1)];
+//     Voxel top = voxels[index_of(id.x, id.y + 1)];
+//     // // Jacobi
+//     voxel.density_buffer[1] = (voxel.left.density_buffer[0] - a*(left.density_buffer[1] + right.density_buffer[1]  +
+//         bottom.density_buffer[1]  + top.density_buffer[1]))/(1+4*a);
+    
+//     voxels[id.x] = voxel;
+// }
+
+// #pragma kernel external_forces
+// [numthreads(8,8,1)]
+// void external_forces (uint3 id : SV_DispatchThreadID)
+// {
+//     // TODO: insert actual code here!
+//     Voxel voxel = voxels[id.xy];
+//     source_force = voxel.velocity_sources_buffer;
+//     if(source_force){
+//         voxel.velocity_buffer[1] = voxel.velocity_buffer[0] + source_force + gravity_force;
+//     }
+//     else {
+//         voxel.velocity_buffer[1] =  voxel.velocity_buffer[0] + gravity_force;
+//     }
+// }
+
+// #pragma kernel density_external_forces
+// [numthreads(8,8,1)]
+// void density_external_forces (uint3 id : SV_DispatchThreadID)
+// {
+//     // TODO: insert actual code here!
+//     Voxel voxel = voxels[id.xy];
+//     density_source = voxel.density_source;
+//     if(density_source){
+//         voxel.density_buffer[1] = voxel.density_buffer[0] + density_source_value;
+//     }
+//     else {
+//         voxel.velocity_buffer[1] =  voxel.velocity_buffer[0] + gravity_force;
+//     }
+// }
+
+// #pragma kernel advection
+// void advection (uint3 id : SV_DispatchThreadID)
+// {
+//     Voxel voxel = voxels[id.x];
+//     float3 previous_position = id.xy - voxel.velocity_buffer[1] * dt;
+
+//     if previous_position.x < 0.5
+//         previous_position.x = 0.5
+//     if previous_position.x > N + 0.5
+//         previous_position.x = N + 0.5
+//     if previous_position.y < 0.5
+//         previous_position.y = 0.5
+//     if previous_position.y > N + 0.5
+//         previous_position.y = N + 0.5
+
+//     p1 = floor(previous_position);
+//     p2 = p1 + 1;
+
+//     // Left Bottom voxel
+//     Q1 = voxels[ index_of (p1.x, p1.y) ].velocity_buffer[0] 
+//     // Left Top voxel
+//     Q2 = voxels[ index_of (p1.x, p2.y) ].velocity_buffer[0]
+//     // Right Bottom voxel
+//     Q3 = voxels[ index_of (p2.x, p1.y) ].velocity_buffer[0]
+//     // Right Top voxel
+//     Q4 = voxels[ index_of (p2.x, p2.y) ].velocity_buffer[0]
+//     // ratio ... how much take from a quantity
+//     t = prevPos - p1
+
+//     // Interpolation in Y direction
+//     QY1 = (1 - t.y) * Q1 + Q2 * t.y
+//     QY2 = (1 - t.y) * Q3 + Q4 * t.y
+
+//     // Interpolation in X direction
+//     finalQuantity = (1 - t.x) * ( QY1 ) + ( QY2 ) * t.x
+//     voxel.velocity_buffer[1] [ currIndex ] = finalQuantity
+// }
+
+// #pragma kernel density_advection
+// void density_advection (uint3 id : SV_DispatchThreadID)
+// {
+//     Voxel voxel = voxels[id.x];
+//     float3 previous_position = id.xy - voxel.density_buffer[1] * dt;
+
+//     if previous_position.x < 0.5
+//         previous_position.x = 0.5
+//     if previous_position.x > N + 0.5
+//         previous_position.x = N + 0.5
+//     if previous_position.y < 0.5
+//         previous_position.y = 0.5
+//     if previous_position.y > N + 0.5
+//         previous_position.y = N + 0.5
+
+//     p1 = floor(previous_position);
+//     p2 = p1 + 1;
+
+//     // Left Bottom voxel
+//     Q1 = voxels[ index_of (p1.x, p1.y) ].density_buffer[0] 
+//     // Left Top voxel
+//     Q2 = voxels[ index_of (p1.x, p2.y) ].density_buffer[0]
+//     // Right Bottom voxel
+//     Q3 = voxels[ index_of (p2.x, p1.y) ].density_buffer[0]
+//     // Right Top voxel
+//     Q4 = voxels[ index_of (p2.x, p2.y) ].density_buffer[0]
+//     // ratio ... how much take from a quantity
+//     t = prevPos - p1
+
+//     // Interpolation in Y direction
+//     QY1 = (1 - t.y) * Q1 + Q2 * t.y
+//     QY2 = (1 - t.y) * Q3 + Q4 * t.y
+
+//     // Interpolation in X direction
+//     finalQuantity = (1 - t.x) * ( QY1 ) + ( QY2 ) * t.x
+//     voxel.density_buffer[1] [ currIndex ] = finalQuantity
+// }
+
+// #pragma kernel diffusion
+// void diffusion (uint3 id : SV_DispatchThreadID)
+// {
+//     Voxel voxel = voxels[id.x];
+
+//     Voxel left = voxels[index_of(id.x - 1 , id.y)]
+//     Voxel right = voxels[index_of(id.x + 1 , id.y)]
+//     Voxel bottom = voxels[index_of(id.x, id.y - 1)]
+//     Voxel top = voxels[index_of(id.x, id.y + 1)]
+//     // Jacobi
+//     voxel.velocity_buffer[1] = (left.velocity_buffer[0] + right.velocity_buffer[0]  +
+//     bottom.velocity_buffer[0]  + top.velocity_buffer[0] + voxel.b * alpha ) / beta
+// }
+
+
+
+        //Bottom Left
+        // if(x==0 && y == 0){
+        //     float right_d = voxels[(x+1)+y*N].density_buffer[1];
+        //     float top_d = voxels[x+(y+1)*N].density_buffer[1];
+
+        //     surrounding_density = (right_d + top_d)/2;
+        // }
+        // //Top Left
+        // else if(x==0 && y == max){
+        //     float right_d = voxels[(x+1)+y*N].density_buffer[1];
+        //     float bottom_d = voxels[x+(y-1)*N].density_buffer[1];
+
+        //     surrounding_density = (right_d + bottom_d)/2;
+        // }
+        // //Bottom Right
+        // else if(x==max && y == 0){
+        //     float left_d = voxels[(x-1)+y*N].density_buffer[1];
+        //     float top_d = voxels[x+(y+1)*N].density_buffer[1];
+
+        //     surrounding_density = (left_d + top_d)/2;
+        // }
+        // //Top Right
+        // else if(x==max && y ==max){
+        //     float left_d = voxels[(x-1)+y*N].density_buffer[1];
+        //     float bottom_d = voxels[x+(y-1)*N].density_buffer[1];
+
+        //     surrounding_density = (left_d + bottom_d)/2;
+        // }
+        // //Bottom
+        // else if(x == 0 ){
+
+        //     float top_d = voxels[x+(y+1)*N].density_buffer[1];
+
+        //     surrounding_density = top_d;
+        // }
+        // //Top
+        // else if(x == max){
+
+        //     float bottom_d = voxels[x+(y-1)*N].density_buffer[1];
+
+        //     surrounding_density = bottom_d;
+        // }
+        // //Left
+        // else if(y == 0){
+
+        //     float right_d = voxels[(x+1)+y*N].density_buffer[1];
+        //     surrounding_density = right_d;
+        // }
+        // //Right
+        // else if(y == max){
+   
+        //     float left_d = voxels[(x-1)+y*N].density_buffer[1];
+
+        //     surrounding_density = left_d;
+        // }
