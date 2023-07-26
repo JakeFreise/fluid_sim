@@ -19,7 +19,7 @@ struct Voxel{
     // float density_b;
     // float3 velocity_sources_buffer;
     int obstacle;
-    // int density_source;
+    float density_source;
 };
 
 RWStructuredBuffer<Voxel> voxels;
@@ -29,6 +29,7 @@ RWStructuredBuffer<Voxel> voxels;
 float3 gravity_force;
 float3 density_source_value;
 float a;
+float b;
 int N;
 
 
@@ -70,6 +71,12 @@ float calculate_next_surrounding_density(int x, int y, int max){
 }
 
 void diffuse_density(int index, int x, int y, int max, float a, float b){
+
+    if(voxels[index].density_source > 0){
+        voxels[index].density_buffer[1] = voxels[index].density_source;
+        return;
+    }
+
     float current_density = voxels[index].density_buffer[0];
     float next_surrounding_density = calculate_next_surrounding_density(x, y, max);
     float next_density = (current_density + a*next_surrounding_density)*b;
@@ -86,9 +93,6 @@ void checkerboard_black (uint3 id : SV_DispatchThreadID)
     uint x = floor(id.x/N);
     uint max = N-1;
     if((x+y)%2) return;
-
-    float a = .04f;
-    float b = 1/(1+a);
 
     diffuse_density(id.x, x, y, max, a, b);
     
@@ -115,9 +119,6 @@ void checkerboard_red (uint3 id : SV_DispatchThreadID)
     uint y = floor(id.x/N);
     uint max = N-1;
     if((x+y)%2 == 0) return;
-
-    float a = .1f;
-    float b = 1/(1+a);
 
     diffuse_density(id.x, x, y, max, a, b);
 

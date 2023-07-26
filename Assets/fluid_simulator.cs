@@ -11,13 +11,15 @@ public unsafe struct Voxel{
     public fixed float density_buffer[2];
     // public fixed float velocity_sources_buffer[3];
     public int obstacle;
-    // public int density_source;
+    public float density_source;
 };
 
 
 public class fluid_simulator : MonoBehaviour
 {
     public int N = 4;
+    public float diffusion;
+    public float dt;
     public Mesh mesh;
     public Material material;
     public ComputeShader fluid_shader;
@@ -117,10 +119,14 @@ public class fluid_simulator : MonoBehaviour
 
     void Start()
     {
+        float a = dt*diffusion*N*N;
+        float b = 1/(1+a);
         create_cubes();
         create_shader();
         
         fluid_shader.SetInt("N", N);
+        fluid_shader.SetFloat("a", a);
+        fluid_shader.SetFloat("b", b);
         black_checkerboard_kernel_id = fluid_shader.FindKernel("checkerboard_black");
         red_checkerboard_kernel_id = fluid_shader.FindKernel("checkerboard_red");
         swap_density_kernel_id = fluid_shader.FindKernel("swap_density");
@@ -131,7 +137,16 @@ public class fluid_simulator : MonoBehaviour
 
         //density_diffusion_kernel_id = fluid_shader.FindKernel("density_diffusion");
         init_iteration_parameters();
-        
+
+        unsafe
+        {
+            int ic = (N*N)/2 + N/2;
+            float random_density_value = Random.Range(0,.8f);
+            voxels[ic].density_buffer[0] = 1;
+            voxels[ic].density_buffer[1] = 1;
+            voxels[ic].density_source = 1;
+        }
+        fluid_buffer.SetData(voxels);
     }
 
 
@@ -140,14 +155,7 @@ public class fluid_simulator : MonoBehaviour
     void Update()
     {
         //keep the center pixel white
-        unsafe
-        {
-            int ic = (N*N)/2 + N/2;
-            float random_density_value = Random.Range(0,.8f);
-            voxels[ic].density_buffer[0] = 1;
-            voxels[ic].density_buffer[1] = 1;
-        }
-        fluid_buffer.SetData(voxels);
+
         dispatch_checkerboard();
         read_colors_from_gpu();
     }
