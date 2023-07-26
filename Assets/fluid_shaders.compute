@@ -42,7 +42,7 @@ float calculate_next_surrounding_density(int x, int y, int max){
 
     float surrounding_density = 0;
     //edge case, we dont have a density.
-    if(x == 0 || x == max || y == 0 || y == max){
+    if(x == 0 || x == max || y == 0 || y == max || voxels[x+y*N].obstacle > 0){
         return surrounding_density;
     }
     float left_d = 0;
@@ -89,18 +89,18 @@ void diffuse_density(int index, int x, int y, int max, float a, float b){
 void checkerboard_black (uint3 id : SV_DispatchThreadID)
 {
     if(id.x < 0 || id.x >= uint (N*N)) { return; }
-    uint y = id.x%N;
-    uint x = floor(id.x/N);
+    uint x = id.x%N;
+    uint y = floor(id.x/N);
     uint max = N-1;
     if((x+y)%2) return;
 
     diffuse_density(id.x, x, y, max, a, b);
     
     float current_density = voxels[id.x].density_buffer[0];
-    if(voxels[id.x].obstacle){
-        voxels[id.x].color.r = current_density;
-        voxels[id.x].color.g = current_density;
-        voxels[id.x].color.b = current_density;
+    if(voxels[id.x].obstacle > 0){
+        voxels[id.x].color.r = .5f;
+        voxels[id.x].color.g = .5f;
+        voxels[id.x].color.b = .5f;
     }
     else{
         voxels[id.x].color.r = current_density;
@@ -123,10 +123,10 @@ void checkerboard_red (uint3 id : SV_DispatchThreadID)
     diffuse_density(id.x, x, y, max, a, b);
 
     float current_density = voxels[id.x].density_buffer[0];
-    if(voxels[id.x].obstacle){
-        voxels[id.x].color.r = current_density;
-        voxels[id.x].color.g = current_density;
-        voxels[id.x].color.b = current_density;
+    if(voxels[id.x].obstacle > 0){
+        voxels[id.x].color.r = .5f;
+        voxels[id.x].color.g = .5f;
+        voxels[id.x].color.b = .5f;
     }
     else{
         voxels[id.x].color.r = current_density;

@@ -117,6 +117,64 @@ public class fluid_simulator : MonoBehaviour
         }
     }
 
+    void add_sources(){
+        unsafe
+        {
+            int ic = (N*N)/2 + N/2;
+            float random_density_value = Random.Range(0,.8f);
+            voxels[ic].density_buffer[0] = 1;
+            voxels[ic].density_buffer[1] = 1;
+            voxels[ic].density_source = 1;
+            voxels[ic].obstacle = 0;
+        }
+    }
+
+    void add_x_wall(int x1, int x2, int y){
+
+        int smaller, bigger;
+
+        if(x1 > x2){
+            bigger = x1;
+            smaller = x2;
+        }
+        else{
+            bigger = x2;
+            smaller = x1;
+        }
+        for(int i = smaller; i <= bigger; i++){
+            int index = i + y*N;
+            voxels[index].obstacle = 1;
+            unsafe{
+                voxels[index].density_buffer[0] = 0;
+                voxels[index].density_buffer[1] = 0;
+            }
+            
+        }
+    }
+
+    void add_y_wall(int y1, int y2, int x){
+
+        int smaller, bigger;
+
+        if(y1 > y2){
+            bigger = y1;
+            smaller = y2;
+        }
+        else{
+            bigger = y2;
+            smaller = y1;
+        }
+        for(int i = smaller; i <= bigger; i++){
+            int index = x + i*N;
+            voxels[index].obstacle = 1;
+            unsafe{
+                voxels[index].density_buffer[0] = 0;
+                voxels[index].density_buffer[1] = 0;
+            }
+            
+        }
+    }
+
     void Start()
     {
         float a = dt*diffusion*N*N;
@@ -138,14 +196,11 @@ public class fluid_simulator : MonoBehaviour
         //density_diffusion_kernel_id = fluid_shader.FindKernel("density_diffusion");
         init_iteration_parameters();
 
-        unsafe
-        {
-            int ic = (N*N)/2 + N/2;
-            float random_density_value = Random.Range(0,.8f);
-            voxels[ic].density_buffer[0] = 1;
-            voxels[ic].density_buffer[1] = 1;
-            voxels[ic].density_source = 1;
-        }
+        add_x_wall(N/2 - N/4, N/2 + N/4, N/2 - 2);
+        add_y_wall(N/2 - N/4, N/2 + N/4, N/2 + 2);
+        add_sources();
+  
+
         fluid_buffer.SetData(voxels);
     }
 
